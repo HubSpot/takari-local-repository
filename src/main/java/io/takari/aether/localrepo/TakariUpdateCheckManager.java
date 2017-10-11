@@ -40,6 +40,7 @@ import org.eclipse.aether.transfer.ArtifactNotFoundException;
 import org.eclipse.aether.transfer.ArtifactTransferException;
 import org.eclipse.aether.transfer.MetadataNotFoundException;
 import org.eclipse.aether.transfer.MetadataTransferException;
+import org.eclipse.aether.util.ConfigUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -80,7 +81,7 @@ public class TakariUpdateCheckManager implements UpdateCheckManager {
   
   @Override
   public void checkArtifact(RepositorySystemSession session, UpdateCheck<Artifact, ArtifactTransferException> check) {
-    if (check.getLocalLastUpdated() != 0 && !isUpdatedRequired(session, check.getLocalLastUpdated(), check.getPolicy())) {
+    if (check.getLocalLastUpdated() != 0 && !isArtifactUpdatedRequired(session, check.getLocalLastUpdated(), check)) {
       if (logger.isDebugEnabled()) {
         logger.debug("Skipped remote update check for " + check.getItem() + ", locally installed artifact up-to-date.");
       }
@@ -133,7 +134,7 @@ public class TakariUpdateCheckManager implements UpdateCheckManager {
       }
     } else if (lastUpdated == 0) {
       check.setRequired(true);
-    } else if (isUpdatedRequired(session, lastUpdated, check.getPolicy())) {
+    } else if (isArtifactUpdatedRequired(session, lastUpdated, check)) {
       check.setRequired(true);
     } else if (fileExists) {
       if (logger.isDebugEnabled()) {
@@ -173,7 +174,7 @@ public class TakariUpdateCheckManager implements UpdateCheckManager {
 
   @Override
   public void checkMetadata(RepositorySystemSession session, UpdateCheck<Metadata, MetadataTransferException> check) {
-    if (check.getLocalLastUpdated() != 0 && !isUpdatedRequired(session, check.getLocalLastUpdated(), check.getPolicy())) {
+    if (check.getLocalLastUpdated() != 0 && !isMetadataUpdatedRequired(session, check.getLocalLastUpdated(), check)) {
       if (logger.isDebugEnabled()) {
         logger.debug("Skipped remote update check for " + check.getItem() + ", locally installed metadata up-to-date.");
       }
@@ -229,7 +230,7 @@ public class TakariUpdateCheckManager implements UpdateCheckManager {
       }
     } else if (lastUpdated == 0) {
       check.setRequired(true);
-    } else if (isUpdatedRequired(session, lastUpdated, check.getPolicy())) {
+    } else if (isMetadataUpdatedRequired(session, lastUpdated, check)) {
       check.setRequired(true);
     } else if (fileExists) {
       if (logger.isDebugEnabled()) {
@@ -371,8 +372,41 @@ public class TakariUpdateCheckManager implements UpdateCheckManager {
     ((Map<Object, Boolean>) checkedFiles).put(updateKey, Boolean.TRUE);
   }
 
-  private boolean isUpdatedRequired(RepositorySystemSession session, long lastModified, String policy) {
-    return updatePolicyAnalyzer.isUpdatedRequired(session, lastModified, policy);
+  private boolean isArtifactUpdatedRequired(RepositorySystemSession session, long lastModified, UpdateCheck<Artifact, ?> check) {
+    if (forceUpdate(session)) {
+      if (logger.isDebugEnabled()) {
+        logger.debug("Force update flag is set, checking for updated artifact " + check.getItem());
+      }
+      return true;
+    }
+
+    return updatePolicyAnalyzer.isUpdatedRequired(session, lastModified, check.getPolicy());
+  }
+
+  private boolean isMetadataUpdatedRequired(RepositorySystemSession session, long lastModified, UpdateCheck<Metadata, ?> check) {
+    if (forceUpdate(session)) {
+      if (logger.isDebugEnabled()) {
+        logger.debug("Force update flag is set, checking for updated metadata " + check.getItem());
+      }
+      return true;
+    }
+
+    boolean updatedRequired = updatePolicyAnalyzer.isUpdatedRequired(session, lastModified, check.getPolicy());
+    if (updatedRequired) {
+      boolean mercedesShortCircuit = MercedesHelper.INSTANCE.shouldSkipUpdate(lastModified, check.getItem());
+      if (mercedesShortCircuit) {
+        if (logger.isDebugEnabled()) {
+          logger.debug("Mercedes short-circuited, skipping metadata update for " + check.getItem());
+        }
+        return false;
+      }
+    }
+
+    return updatedRequired;
+  }
+
+  private boolean forceUpdate(RepositorySystemSession session) {
+    return ConfigUtils.getBoolean(session, false, "forceUpdate");
   }
 
   private Properties read(File touchFile) {
