@@ -32,33 +32,33 @@ public enum MercedesHelper {
 
     String[] groupParts = metadata.getGroupId().split("\\.");
 
-    Path mercedesPath = m2Dir().resolve("repository");
+    Path artifactInfoPath = m2Dir().resolve("repository");
     for (String groupPart : groupParts) {
-      mercedesPath = mercedesPath.resolve(groupPart);
+      artifactInfoPath = artifactInfoPath.resolve(groupPart);
     }
-    mercedesPath = mercedesPath.resolve(metadata.getArtifactId()).resolve("mercedes.artifactInfo");
+    artifactInfoPath = artifactInfoPath.resolve(metadata.getArtifactId()).resolve("mercedes.artifactInfo");
 
-    File mercedesFile = mercedesPath.toFile();
-    if (!mercedesFile.exists()) {
+    File artifactInfoFile = artifactInfoPath.toFile();
+    if (!artifactInfoFile.exists()) {
       if (LOGGER.isDebugEnabled()) {
-        LOGGER.debug("No mercedes artifact info found at path " + mercedesPath);
+        LOGGER.debug("No mercedes artifact info found at path " + artifactInfoPath);
       }
       return true;
-    } else if (!mercedesFile.isFile()) {
-      LOGGER.warn("Mercedes artifact info is not a regular file at path " + mercedesPath);
+    } else if (!artifactInfoFile.isFile()) {
+      LOGGER.warn("Mercedes artifact info is not a regular file at path " + artifactInfoPath);
       return false;
-    } else if (!mercedesFile.canRead()) {
-      LOGGER.warn("Mercedes artifact info is not readable at path " + mercedesPath);
+    } else if (!artifactInfoFile.canRead()) {
+      LOGGER.warn("Mercedes artifact info is not readable at path " + artifactInfoPath);
       return false;
     }
 
-    try (InputStream inputStream = Files.newInputStream(mercedesPath, StandardOpenOption.READ)) {
-      Properties mercedesProperties = new Properties();
-      mercedesProperties.load(inputStream);
+    try (InputStream inputStream = Files.newInputStream(artifactInfoPath, StandardOpenOption.READ)) {
+      Properties artifactInfo = new Properties();
+      artifactInfo.load(inputStream);
 
-      String s = mercedesProperties.getProperty("lastUpdateTime");
+      String s = artifactInfo.getProperty("lastUpdateTime");
       if (s == null) {
-        LOGGER.warn("Mercedes artifact info is missing lastUpdateTime at path " + mercedesPath);
+        LOGGER.warn("Mercedes artifact info is missing lastUpdateTime at path " + artifactInfoPath);
         return false;
       }
 
@@ -66,11 +66,11 @@ public enum MercedesHelper {
         long lastUpdateTime = Long.parseLong(s);
         return lastUpdateTime > lastModified;
       } catch (NumberFormatException e) {
-        LOGGER.warn("Mercedes artifact info has an invalid lastUpdateTime at path " + mercedesPath);
+        LOGGER.warn("Mercedes artifact info has an invalid lastUpdateTime at path " + artifactInfoPath);
         return false;
       }
     } catch (IOException e) {
-      LOGGER.info("Error trying to load mercedes artifact info from " + mercedesPath, e);
+      LOGGER.info("Error trying to load mercedes artifact info from " + artifactInfoPath, e);
       return false;
     }
   }
