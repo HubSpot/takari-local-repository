@@ -153,7 +153,7 @@ public enum MercedesHelper {
       try {
         return Long.parseLong(s);
       } catch (NumberFormatException e) {
-        LOGGER.warn("Mercedes file has an invalid lastUpdateTime at path " + mercedesPath);
+        LOGGER.warn("Mercedes file has an invalid lastUpdateTime at path " + mercedesPath, e);
         return 0;
       }
     }
