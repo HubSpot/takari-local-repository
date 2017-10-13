@@ -93,7 +93,9 @@ public enum MercedesHelper {
     try (InputStream inputStream = Files.newInputStream(mercedesPath, StandardOpenOption.READ)) {
       Properties mercedesProperties = new Properties();
       mercedesProperties.load(inputStream);
-      return new MercedesStatus(mercedesPath, mercedesProperties);
+      MercedesStatus status = new MercedesStatus(mercedesPath, mercedesProperties);
+      LOGGER.info("Mercedes is healthy, will skip snapshot checks based on mercedes metadata");
+      return status;
     } catch (IOException e) {
       LOGGER.warn("Error trying to load mercedes data from " + mercedesPath, e);
       return INVALID;
