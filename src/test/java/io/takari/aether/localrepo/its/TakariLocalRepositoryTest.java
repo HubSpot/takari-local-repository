@@ -1,6 +1,15 @@
 package io.takari.aether.localrepo.its;
 
 import static org.junit.Assert.assertFalse;
+
+import java.io.File;
+
+import org.codehaus.plexus.util.FileUtils;
+import org.junit.Ignore;
+import org.junit.Rule;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+
 import io.takari.maven.testing.TestProperties;
 import io.takari.maven.testing.TestResources;
 import io.takari.maven.testing.executor.MavenExecution;
@@ -10,13 +19,7 @@ import io.takari.maven.testing.executor.MavenRuntime.MavenRuntimeBuilder;
 import io.takari.maven.testing.executor.MavenVersions;
 import io.takari.maven.testing.executor.junit.MavenJUnitTestRunner;
 
-import java.io.File;
-
-import org.codehaus.plexus.util.FileUtils;
-import org.junit.Rule;
-import org.junit.Test;
-import org.junit.runner.RunWith;
-
+@Ignore
 @RunWith(MavenJUnitTestRunner.class)
 @MavenVersions({"3.3.1", "3.3.3"})
 public class TakariLocalRepositoryTest {

@@ -40,10 +40,12 @@ import org.eclipse.aether.transfer.MetadataNotFoundException;
 import org.eclipse.aether.transfer.MetadataTransferException;
 import org.junit.After;
 import org.junit.Before;
+import org.junit.Ignore;
 import org.junit.Test;
 
 /**
  */
+@Ignore
 public class TakariUpdateCheckManagerTest {
 
   private static final int HOUR = 60 * 60 * 1000;
