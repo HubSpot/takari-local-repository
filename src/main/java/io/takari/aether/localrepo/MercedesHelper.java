@@ -64,7 +64,7 @@ public enum MercedesHelper {
 
       try {
         long lastUpdateTime = Long.parseLong(s);
-        return lastUpdateTime > lastModified;
+        return lastUpdateTime < lastModified;
       } catch (NumberFormatException e) {
         LOGGER.warn("Mercedes artifact info has an invalid lastUpdateTime at path " + artifactInfoPath);
         return false;
