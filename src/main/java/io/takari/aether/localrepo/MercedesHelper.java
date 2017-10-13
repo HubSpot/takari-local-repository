@@ -94,7 +94,11 @@ public enum MercedesHelper {
       Properties mercedesProperties = new Properties();
       mercedesProperties.load(inputStream);
       MercedesStatus status = new MercedesStatus(mercedesPath, mercedesProperties);
-      LOGGER.info("Mercedes is healthy, will skip snapshot checks based on mercedes metadata");
+      if (status.isValid()) {
+        LOGGER.info("Mercedes is healthy, will skip snapshot checks based on mercedes metadata");
+      } else {
+        LOGGER.warn("Mercedes is not healthy, will have to hit Nexus to check for updates");
+      }
       return status;
     } catch (IOException e) {
       LOGGER.warn("Error trying to load mercedes data from " + mercedesPath, e);
