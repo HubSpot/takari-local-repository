@@ -22,7 +22,7 @@ public enum MercedesHelper {
   private static final MercedesStatus MERCEDES_STATUS = loadMercedesStatus();
 
   public boolean shouldSkipUpdate(long lastModified, Metadata metadata) {
-    if (!MERCEDES_STATUS.isValid()) {
+    if (!MERCEDES_STATUS.isRecentlyUpdated()) {
       return false;
     }
 
@@ -94,11 +94,16 @@ public enum MercedesHelper {
       Properties mercedesProperties = new Properties();
       mercedesProperties.load(inputStream);
       MercedesStatus status = new MercedesStatus(mercedesPath, mercedesProperties);
-      if (status.isValid()) {
+      if (status.isLastUpdateSuccess() && status.isRecentlyUpdated()) {
         LOGGER.info("Mercedes is healthy, will skip snapshot checks based on mercedes metadata");
+      } else if (status.isRecentlyUpdated()) {
+        LOGGER.warn("Mercedes daemon can't connect to the API, are you on the VPN?");
+        LOGGER.warn("In the meantime, will skip snapshot checks based on mercedes metadata");
+        LOGGER.warn("Run with -DforceUpdate=true to override");
       } else {
-        LOGGER.warn("Mercedes is not healthy, will have to hit Nexus to check for updates");
+        LOGGER.warn("Mercedes daemon does not appear to be running, will have to hit Nexus to check for updates");
       }
+
       return status;
     } catch (IOException e) {
       LOGGER.warn("Error trying to load mercedes data from " + mercedesPath, e);
@@ -115,7 +120,7 @@ public enum MercedesHelper {
 
     private final boolean lastUpdateSuccess;
     private final long lastUpdateTime;
-    private final boolean valid;
+    private final boolean recentlyUpdated;
 
     public MercedesStatus(Path mercedesPath, Properties properties) {
       this(lastUpdateSuccess(mercedesPath, properties), lastUpdateTime(mercedesPath, properties));
@@ -124,7 +129,7 @@ public enum MercedesHelper {
     public MercedesStatus(boolean lastUpdateSuccess, long lastUpdateTime) {
       this.lastUpdateSuccess = lastUpdateSuccess;
       this.lastUpdateTime = lastUpdateTime;
-      this.valid = lastUpdateSuccess && (System.currentTimeMillis() - lastUpdateTime) < ONE_MINUTE;
+      this.recentlyUpdated = (System.currentTimeMillis() - lastUpdateTime) < ONE_MINUTE;
     }
 
     public boolean isLastUpdateSuccess() {
@@ -135,8 +140,8 @@ public enum MercedesHelper {
       return lastUpdateTime;
     }
 
-    public boolean isValid() {
-      return valid;
+    public boolean isRecentlyUpdated() {
+      return recentlyUpdated;
     }
 
     private static boolean lastUpdateSuccess(Path mercedesPath, Properties properties) {
