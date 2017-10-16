@@ -24,6 +24,8 @@ public enum MercedesHelper {
   public boolean shouldSkipUpdate(long lastModified, Metadata metadata) {
     if (!MERCEDES_STATUS.isRecentlyUpdated()) {
       return false;
+    } else if (!MERCEDES_STATUS.isLastUpdateSuccess()) {
+      return true;
     }
 
     if (metadata.getGroupId().isEmpty() || metadata.getArtifactId().isEmpty()) {
@@ -98,7 +100,7 @@ public enum MercedesHelper {
         LOGGER.info("Mercedes is healthy, will skip snapshot checks based on mercedes metadata");
       } else if (status.isRecentlyUpdated()) {
         LOGGER.warn("Mercedes daemon can't connect to the API, are you on the VPN?");
-        LOGGER.warn("In the meantime, will skip snapshot checks based on mercedes metadata");
+        LOGGER.warn("In the meantime, will skip all snapshot checks");
         LOGGER.warn("Run with -DforceUpdate=true to override");
       } else {
         LOGGER.warn("Mercedes daemon does not appear to be running, will have to hit Nexus to check for updates");
