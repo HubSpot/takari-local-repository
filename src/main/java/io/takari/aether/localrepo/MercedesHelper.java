@@ -3,10 +3,14 @@ package io.takari.aether.localrepo;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
+import java.util.Collections;
+import java.util.List;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 
@@ -14,14 +18,19 @@ import org.eclipse.aether.metadata.Metadata;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import io.takari.aether.localrepo.MercedesHelper.LoadUpdateTimeResult.Status;
+
 public enum MercedesHelper {
   INSTANCE;
 
   private static final Logger LOGGER = LoggerFactory.getLogger(TakariUpdateCheckManager.class);
   private static final MercedesStatus INVALID = new MercedesStatus(false, 0);
   private static final MercedesStatus MERCEDES_STATUS = loadMercedesStatus();
+  private static final long BUFFER = TimeUnit.MINUTES.toMillis(1);
 
   public boolean shouldSkipUpdate(long lastModified, Metadata metadata) {
+    long start = System.currentTimeMillis();
+
     if (!MERCEDES_STATUS.isRecentlyUpdated()) {
       return false;
     } else if (!MERCEDES_STATUS.isLastUpdateSuccess()) {
@@ -32,49 +41,94 @@ public enum MercedesHelper {
       return false;
     }
 
-    String[] groupParts = metadata.getGroupId().split("\\.");
-
-    Path artifactInfoPath = m2Dir().resolve("repository");
-    for (String groupPart : groupParts) {
-      artifactInfoPath = artifactInfoPath.resolve(groupPart);
+    Path artifactDir = artifactDir(metadata);
+    final Path mercedesUpdatePath;
+    if (metadata.getVersion().isEmpty()) {
+      mercedesUpdatePath = artifactDir.resolve("mercedes.updateInfo");
+    } else {
+      mercedesUpdatePath = artifactDir.resolve(metadata.getVersion()).resolve("mercedes.updateInfo");
     }
-    artifactInfoPath = artifactInfoPath.resolve(metadata.getArtifactId()).resolve("mercedes.artifactInfo");
 
-    File artifactInfoFile = artifactInfoPath.toFile();
-    if (!artifactInfoFile.exists()) {
-      if (LOGGER.isDebugEnabled()) {
-        LOGGER.debug("No mercedes artifact info found at path " + artifactInfoPath);
+    try {
+      LoadUpdateTimeResult blazarUpdateTime = loadLastUpdateTime(artifactDir.resolve("mercedes.artifactInfo"));
+      LoadUpdateTimeResult lastCheckTime = loadLastUpdateTime(mercedesUpdatePath);
+      if (blazarUpdateTime.getStatus() == Status.FILE_NOT_FOUND) {
+        // skip if we've fetched before
+        return lastCheckTime.getStatus() == Status.SUCCESS;
+      } else if (blazarUpdateTime.getStatus() != Status.SUCCESS || lastCheckTime.getStatus() != Status.SUCCESS) {
+        return false;
+      } else {
+        return blazarUpdateTime.getTimestamp() < (lastCheckTime.getTimestamp() - BUFFER);
       }
-      return true;
-    } else if (!artifactInfoFile.isFile()) {
-      LOGGER.warn("Mercedes artifact info is not a regular file at path " + artifactInfoPath);
-      return false;
-    } else if (!artifactInfoFile.canRead()) {
-      LOGGER.warn("Mercedes artifact info is not readable at path " + artifactInfoPath);
-      return false;
+    } finally {
+      writeLastUpdateTime(mercedesUpdatePath, start);
+    }
+  }
+
+  private static LoadUpdateTimeResult loadLastUpdateTime(Path path) {
+    File file = path.toFile();
+    if (!file.exists()) {
+      if (LOGGER.isDebugEnabled()) {
+        LOGGER.debug("No mercedes file found at path " + path);
+      }
+      return new LoadUpdateTimeResult(Status.FILE_NOT_FOUND, null);
+    } else if (!file.isFile()) {
+      LOGGER.warn("Mercedes file is not a regular file at path " + path);
+      return new LoadUpdateTimeResult(Status.FILE_NOT_FILE, null);
+    } else if (!file.canRead()) {
+      LOGGER.warn("Mercedes file is not readable at path " + path);
+      return new LoadUpdateTimeResult(Status.FILE_NOT_READABLE, null);
     }
 
-    try (InputStream inputStream = Files.newInputStream(artifactInfoPath, StandardOpenOption.READ)) {
+    try (InputStream inputStream = Files.newInputStream(path, StandardOpenOption.READ)) {
       Properties artifactInfo = new Properties();
       artifactInfo.load(inputStream);
 
       String s = artifactInfo.getProperty("lastUpdateTime");
       if (s == null) {
-        LOGGER.warn("Mercedes artifact info is missing lastUpdateTime at path " + artifactInfoPath);
-        return false;
+        LOGGER.warn("Mercedes file is missing lastUpdateTime at path " + path);
+        return new LoadUpdateTimeResult(Status.FILE_MISSING_PROPERTY, null);
       }
 
       try {
-        long lastUpdateTime = Long.parseLong(s);
-        return lastUpdateTime < lastModified;
+        return new LoadUpdateTimeResult(Status.SUCCESS, Long.parseLong(s));
       } catch (NumberFormatException e) {
-        LOGGER.warn("Mercedes artifact info has an invalid lastUpdateTime at path " + artifactInfoPath);
-        return false;
+        LOGGER.warn("Mercedes file has an invalid lastUpdateTime at path " + path);
+        return new LoadUpdateTimeResult(Status.PROPERTY_NOT_PARSEABLE, null);
       }
     } catch (IOException e) {
-      LOGGER.info("Error trying to load mercedes artifact info from " + artifactInfoPath, e);
-      return false;
+      LOGGER.info("Error trying to load mercedes file from " + path, e);
+      return new LoadUpdateTimeResult(Status.IO_EXCEPTION, null);
     }
+  }
+
+  private static void writeLastUpdateTime(Path path, long timestamp) {
+    List<String> lines = Collections.singletonList("lastUpdateTime=" + timestamp);
+
+    Path temp = null;
+    try {
+      temp = Files.createTempFile("mercedes-", ".tmp");
+      Files.write(temp, lines, StandardCharsets.UTF_8);
+      Files.move(temp, path, StandardCopyOption.REPLACE_EXISTING);
+    } catch (IOException e) {
+      throw new RuntimeException("Error writing mercedes data to path " + path, e);
+    } finally {
+      if (temp != null) {
+        try {
+          Files.deleteIfExists(temp);
+        } catch (IOException ignored) {}
+      }
+    }
+  }
+
+  private static Path artifactDir(Metadata metadata) {
+    String[] groupParts = metadata.getGroupId().split("\\.");
+
+    Path artifactDir = m2Dir().resolve("repository");
+    for (String groupPart : groupParts) {
+      artifactDir = artifactDir.resolve(groupPart);
+    }
+    return artifactDir.resolve(metadata.getArtifactId());
   }
 
   private static MercedesStatus loadMercedesStatus() {
@@ -115,6 +169,34 @@ public enum MercedesHelper {
 
   private static Path m2Dir() {
     return Paths.get(System.getProperty("user.home"), ".m2");
+  }
+
+  public static class LoadUpdateTimeResult {
+    public enum Status {
+      SUCCESS,
+      FILE_NOT_FOUND,
+      FILE_NOT_FILE,
+      FILE_NOT_READABLE,
+      FILE_MISSING_PROPERTY,
+      PROPERTY_NOT_PARSEABLE,
+      IO_EXCEPTION
+    }
+
+    private final Status status;
+    private final Long timestamp;
+
+    public LoadUpdateTimeResult(Status status, Long timestamp) {
+      this.status = status;
+      this.timestamp = timestamp;
+    }
+
+    public Status getStatus() {
+      return status;
+    }
+
+    public Long getTimestamp() {
+      return timestamp;
+    }
   }
 
   private static class MercedesStatus {
