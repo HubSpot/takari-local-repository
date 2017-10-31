@@ -109,6 +109,7 @@ public enum MercedesHelper {
     try {
       temp = Files.createTempFile("mercedes-", ".tmp");
       Files.write(temp, lines, StandardCharsets.UTF_8);
+      Files.createDirectories(path.getParent());
       Files.move(temp, path, StandardCopyOption.REPLACE_EXISTING);
     } catch (IOException e) {
       throw new RuntimeException("Error writing mercedes data to path " + path, e);
